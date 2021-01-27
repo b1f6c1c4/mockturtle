@@ -33,6 +33,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "../traits.hpp"
@@ -111,6 +112,7 @@ public:
 
   explicit depth_view( NodeCostFn const& cost_fn = {}, depth_view_params const& ps = {} )
       : Ntk(),
+        _self( std::make_shared<depth_view *>(this) ),
         _ps( ps ),
         _levels( *this ),
         _crit_path( *this ),
@@ -125,7 +127,13 @@ public:
     static_assert( has_foreach_po_v<Ntk>, "Ntk does not implement the foreach_po method" );
     static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
 
-    Ntk::events().on_add.push_back( [this]( auto const& n ) { on_add( n ); } );
+    std::weak_ptr wp = _self;
+    Ntk::events().on_add.push_back( [wp]( auto const& n ) {
+      auto selfp = wp.lock(); if ( !selfp ) return false;
+      auto self = *selfp;
+      self->on_add( n );
+      return true;
+    } );
   }
 
   /*! \brief Standard constructor.
@@ -135,6 +143,7 @@ public:
    */
   explicit depth_view( Ntk const& ntk, NodeCostFn const& cost_fn = {}, depth_view_params const& ps = {} )
       : Ntk( ntk ),
+        _self( std::make_shared<depth_view *>(this) ),
         _ps( ps ),
         _levels( ntk ),
         _crit_path( ntk ),
@@ -151,12 +160,14 @@ public:
 
     update_levels();
 
-    Ntk::events().on_add.push_back( [this]( auto const& n ) { on_add( n ); } );
+    std::weak_ptr wp = _self;
+    Ntk::events().on_add.push_back( [wp]( auto const& n ) {
+      auto selfp = wp.lock(); if ( !selfp ) return false;
+      auto self = *selfp;
+      self->on_add( n );
+      return true;
+    } );
   }
-
-  // We should add these or make sure that members are properly copied
-  //depth_view( depth_view<Ntk> const& ) = delete;
-  //depth_view<Ntk> operator=( depth_view<Ntk> const& ) = delete;
 
   uint32_t depth() const
   {
@@ -288,6 +299,8 @@ private:
 
     _levels[n] = level + _cost_fn( *this, n );
   }
+
+  std::shared_ptr<depth_view *> _self;
 
   depth_view_params _ps;
   node_map<uint32_t, Ntk> _levels;

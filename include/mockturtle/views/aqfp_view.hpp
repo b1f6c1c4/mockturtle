@@ -41,6 +41,7 @@
 
 #include <cstdint>
 #include <stack>
+#include <memory>
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -124,7 +125,7 @@ public:
   };
 
   aqfp_view( Ntk const& ntk, aqfp_view_params const& ps = {} )
-   : Ntk( ntk ), _fanout( ntk ), _external_ref_count( ntk ), _ps( ps ), _max_fanout( std::pow( ps.splitter_capacity, ps.max_splitter_levels ) ), _node_depth( this ), _depth_view( ntk, _node_depth )
+   : Ntk( ntk ), _self( std::make_shared<aqfp_view *>(this) ), _fanout( ntk ), _external_ref_count( ntk ), _ps( ps ), _max_fanout( std::pow( ps.splitter_capacity, ps.max_splitter_levels ) ), _node_depth( this ), _depth_view( ntk, _node_depth )
   {
     static_assert( !has_foreach_fanout_v<Ntk> && "Ntk already has fanout interfaces" );
     static_assert( !has_depth_v<Ntk> && !has_level_v<Ntk> && !has_update_levels_v<Ntk>, "Ntk already has depth interfaces" );
@@ -138,40 +139,51 @@ public:
 
     update_fanout();
 
+    std::weak_ptr wp = _self;
+
     if ( _ps.update_on_add )
     {
-      Ntk::events().on_add.push_back( [this]( auto const& n ) {
-        _fanout.resize();
-        _external_ref_count.resize();
-        Ntk::foreach_fanin( n, [&, this]( auto const& f ) {
-          _fanout[f].push_back( n );
+      Ntk::events().on_add.push_back( [wp]( auto const& n ) {
+        auto selfp = wp.lock(); if ( !selfp ) return false;
+        auto self = *selfp;
+        self->_fanout.resize();
+        self->_external_ref_count.resize();
+        self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
+          self->_fanout[f].push_back( n );
         } );
+        return true;
       } );
     }
 
     if ( _ps.update_on_modified )
     {
-      Ntk::events().on_modified.push_back( [this]( auto const& n, auto const& previous ) {
+      Ntk::events().on_modified.push_back( [wp]( auto const& n, auto const& previous ) {
         (void)previous;
+        auto selfp = wp.lock(); if ( !selfp ) return false;
+        auto self = *selfp;
         for ( auto const& f : previous ) {
-          _fanout[f].erase( std::remove( _fanout[f].begin(), _fanout[f].end(), n ), _fanout[f].end() );
+          self->_fanout[f].erase( std::remove( self->_fanout[f].begin(), self->_fanout[f].end(), n ), self->_fanout[f].end() );
         }
-        Ntk::foreach_fanin( n, [&, this]( auto const& f ) {
-          _fanout[f].push_back( n );
-          on_update( Ntk::get_node( f ) );
+        self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
+          self->_fanout[f].push_back( n );
+          self->on_update( self->Ntk::get_node( f ) );
         } );
-        _depth_view.update_levels();
+        self->_depth_view.update_levels();
+        return true;
       } );
     }
 
     if ( _ps.update_on_delete )
     {
-      Ntk::events().on_delete.push_back( [this]( auto const& n ) {
-        _fanout[n].clear();
-        Ntk::foreach_fanin( n, [&, this]( auto const& f ) {
-          _fanout[f].erase( std::remove( _fanout[f].begin(), _fanout[f].end(), n ), _fanout[f].end() );
+      Ntk::events().on_delete.push_back( [wp]( auto const& n ) {
+        auto selfp = wp.lock(); if ( !selfp ) return false;
+        auto self = *selfp;
+        self->_fanout[n].clear();
+        self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
+          self->_fanout[f].erase( std::remove( self->_fanout[f].begin(), self->_fanout[f].end(), n ), self->_fanout[f].end() );
         } );
-        _depth_view.update_levels();
+        self->_depth_view.update_levels();
+        return true;
       } );
     }
   }
@@ -377,6 +389,8 @@ private:
   }
 
 private:
+  std::shared_ptr<aqfp_view *> _self;
+
   node_map<std::vector<node>, Ntk> _fanout;
   node_map<uint32_t, Ntk> _external_ref_count;
   aqfp_view_params _ps;

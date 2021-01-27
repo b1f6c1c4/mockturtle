@@ -88,6 +88,7 @@ public:
 
   explicit fanout_view( fanout_view_params const& ps = {} )
     : Ntk()
+    , _self( std::make_shared<fanout_view *>(this) )
     , _fanout( *this )
     , _ps( ps )
   {
@@ -97,42 +98,54 @@ public:
 
     update_fanout();
 
+    std::weak_ptr wp = _self;
+
     if ( _ps.update_on_add )
     {
-      Ntk::events().on_add.push_back( [this]( auto const& n ) {
-        _fanout.resize();
-        Ntk::foreach_fanin( n, [&, this]( auto const& f ) {
-          _fanout[f].push_back( n );
+      Ntk::events().on_add.push_back( [wp]( auto const& n ) {
+        auto selfp = wp.lock(); if ( !selfp ) return false;
+        auto self = *selfp;
+        self->_fanout.resize();
+        self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
+          self->_fanout[f].push_back( n );
         } );
+        return true;
       } );
     }
 
     if ( _ps.update_on_modified )
     {
-      Ntk::events().on_modified.push_back( [this]( auto const& n, auto const& previous ) {
+      Ntk::events().on_modified.push_back( [wp]( auto const& n, auto const& previous ) {
         (void)previous;
+        auto selfp = wp.lock(); if ( !selfp ) return false;
+        auto self = *selfp;
         for ( auto const& f : previous ) {
-          _fanout[f].erase( std::remove( _fanout[f].begin(), _fanout[f].end(), n ), _fanout[f].end() );
+          self->_fanout[f].erase( std::remove( self->_fanout[f].begin(), self->_fanout[f].end(), n ), self->_fanout[f].end() );
         }
-        Ntk::foreach_fanin( n, [&, this]( auto const& f ) {
-          _fanout[f].push_back( n );
+        self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
+          self->_fanout[f].push_back( n );
         } );
+        return true;
       } );
     }
 
     if ( _ps.update_on_delete )
     {
-      Ntk::events().on_delete.push_back( [this]( auto const& n ) {
-        _fanout[n].clear();
-        Ntk::foreach_fanin( n, [&, this]( auto const& f ) {
-          _fanout[f].erase( std::remove( _fanout[f].begin(), _fanout[f].end(), n ), _fanout[f].end() );
+      Ntk::events().on_delete.push_back( [wp]( auto const& n ) {
+        auto selfp = wp.lock(); if ( !selfp ) return false;
+        auto self = *selfp;
+        self->_fanout[n].clear();
+        self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
+          self->_fanout[f].erase( std::remove( self->_fanout[f].begin(), self->_fanout[f].end(), n ), self->_fanout[f].end() );
         } );
+        return true;
       } );
     }
   }
 
   explicit fanout_view( Ntk const& ntk, fanout_view_params const& ps = {} )
     : Ntk( ntk )
+    , _self( std::make_shared<fanout_view *>(this) )
     , _fanout( ntk )
     , _ps( ps )
   {
@@ -142,36 +155,47 @@ public:
 
     update_fanout();
 
+    std::weak_ptr wp = _self;
+
     if ( _ps.update_on_add )
     {
-      Ntk::events().on_add.push_back( [this]( auto const& n ) {
-        _fanout.resize();
-        Ntk::foreach_fanin( n, [&, this]( auto const& f ) {
-          _fanout[f].push_back( n );
+      Ntk::events().on_add.push_back( [wp]( auto const& n ) {
+        auto selfp = wp.lock(); if ( !selfp ) return false;
+        auto self = *selfp;
+        self->_fanout.resize();
+        self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
+          self->_fanout[f].push_back( n );
         } );
+        return true;
       } );
     }
 
     if ( _ps.update_on_modified )
     {
-      Ntk::events().on_modified.push_back( [this]( auto const& n, auto const& previous ) {
+      Ntk::events().on_modified.push_back( [wp]( auto const& n, auto const& previous ) {
         (void)previous;
+        auto selfp = wp.lock(); if ( !selfp ) return false;
+        auto self = *selfp;
         for ( auto const& f : previous ) {
-          _fanout[f].erase( std::remove( _fanout[f].begin(), _fanout[f].end(), n ), _fanout[f].end() );
+          self->_fanout[f].erase( std::remove( self->_fanout[f].begin(), self->_fanout[f].end(), n ), self->_fanout[f].end() );
         }
-        Ntk::foreach_fanin( n, [&, this]( auto const& f ) {
-          _fanout[f].push_back( n );
+        self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
+          self->_fanout[f].push_back( n );
         } );
+        return true;
       } );
     }
 
     if ( _ps.update_on_delete )
     {
-      Ntk::events().on_delete.push_back( [this]( auto const& n ) {
-        _fanout[n].clear();
-        Ntk::foreach_fanin( n, [&, this]( auto const& f ) {
-          _fanout[f].erase( std::remove( _fanout[f].begin(), _fanout[f].end(), n ), _fanout[f].end() );
+      Ntk::events().on_delete.push_back( [wp]( auto const& n ) {
+        auto selfp = wp.lock(); if ( !selfp ) return false;
+        auto self = *selfp;
+        self->_fanout[n].clear();
+        self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
+          self->_fanout[f].erase( std::remove( self->_fanout[f].begin(), self->_fanout[f].end(), n ), self->_fanout[f].end() );
         } );
+        return true;
       } );
     }
   }
@@ -235,6 +259,8 @@ private:
           });
       });
   }
+
+  std::shared_ptr<fanout_view *> _self;
 
   node_map<std::vector<node>, Ntk> _fanout;
   fanout_view_params _ps;

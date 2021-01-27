@@ -91,13 +91,6 @@ public:
   {
   }
 
-  ~cnf_view_impl()
-  {
-    Ntk::events().on_add.erase( Ntk::events().on_add.begin() + event_ptr_[0] );
-    Ntk::events().on_modified.erase( Ntk::events().on_modified.begin() + event_ptr_[1] );
-    Ntk::events().on_delete.erase( Ntk::events().on_delete.begin() + event_ptr_[2] );
-  }
-
   void init()
   {
     cnf_view_.solver_.add_variables( Ntk::size() );
@@ -120,10 +113,6 @@ public:
       literals_[n] = bill::lit_type( ++v, bill::lit_type::polarities::positive );
       cnf_view_.on_add( n, false );
     } );
-
-    event_ptr_[0] = Ntk::events().on_add.size();
-    event_ptr_[1] = Ntk::events().on_modified.size();
-    event_ptr_[2] = Ntk::events().on_delete.size();
   }
 
   inline bill::var_type add_var()
@@ -182,8 +171,6 @@ private:
 
   node_map<bill::lit_type, Ntk> literals_;
   std::vector<bill::lit_type> switches_;
-
-  std::size_t event_ptr_[3];
 };
 
 } /* namespace detail */
@@ -221,6 +208,7 @@ public:
   // can only be constructed as empty network
   explicit cnf_view( cnf_view_params const& ps = {} )
       : cnf_view_impl_t( *this ),
+        _self( std::make_shared<cnf_view *>(this) ),
         ps_( ps )
   {
     static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
@@ -256,6 +244,7 @@ public:
   template<bool enabled = AllowModify, typename = std::enable_if_t<enabled>>
   explicit cnf_view( Ntk& ntk, cnf_view_params const& ps = {} )
       : cnf_view_impl_t( *this, ntk ),
+        _self( std::make_shared<cnf_view *>(this) ),
         ps_( ps )
   {
     static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
@@ -490,35 +479,43 @@ public:
 private:
   void register_events()
   {
-    Ntk::events().on_add.push_back( [this]( auto const& n ) { on_add( n ); } );
-    Ntk::events().on_modified.push_back( [this]( auto const& n, auto const& previous ) {
+    std::weak_ptr wp = _self;
+    Ntk::events().on_add.push_back( [wp]( auto const& n ) {
+      auto selfp = wp.lock(); if ( !selfp ) return false;
+      auto self = *selfp;
+      self->on_add( n );
+      return true;
+    } );
+    Ntk::events().on_modified.push_back( [wp]( auto const& n, auto const& previous ) {
       (void)previous;
+      auto selfp = wp.lock(); if ( !selfp ) return false;
+      auto self = *selfp;
       if constexpr ( AllowModify )
       {
-        if ( ps_.auto_update )
+        if ( self->ps_.auto_update )
         {
-          cnf_view_impl_t::on_modified( n );
+          self->cnf_view_impl_t::on_modified( n );
         }
-        return;
+        return true;
       }
 
       (void)n;
-      (void)this;
       assert( false && "nodes should not be modified in cnf_view" );
       std::abort();
     } );
-    Ntk::events().on_delete.push_back( [this]( auto const& n ) {
+    Ntk::events().on_delete.push_back( [wp]( auto const& n ) {
+      auto selfp = wp.lock(); if ( !selfp ) return false;
+      auto self = *selfp;
       if constexpr ( AllowModify )
       {
-        if ( ps_.auto_update )
+        if ( self->ps_.auto_update )
         {
-          cnf_view_impl_t::on_delete( n );
+          self->cnf_view_impl_t::on_delete( n );
         }
-        return;
+        return true;
       }
 
       (void)n;
-      (void)this;
       assert( false && "nodes should not be deleted in cnf_view" );
       std::abort();
     } );
@@ -662,6 +659,8 @@ private:
   }
 
 private:
+  std::shared_ptr<cnf_view *> _self;
+
   bill::solver<Solver> solver_;
   bill::result::model_type model_;
   percy::cnf_formula dimacs_;
