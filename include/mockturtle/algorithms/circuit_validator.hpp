@@ -33,6 +33,7 @@
 #pragma once
 
 #include "../utils/node_map.hpp"
+#include <memory>
 #include "cnf.hpp"
 #include <bill/sat/interface/abc_bsat2.hpp>
 #include <bill/sat/interface/common.hpp>
@@ -95,7 +96,7 @@ public:
   };
 
   explicit circuit_validator( Ntk const& ntk, validator_params const& ps = {} )
-      : ntk( ntk ), ps( ps ), literals( ntk ), constructed( ntk ), num_invoke( 0u ), cex( ntk.num_pis() )
+      : ntk( ntk ), _self( std::make_shared<circuit_validator *>(this) ), ps( ps ), literals( ntk ), constructed( ntk ), num_invoke( 0u ), cex( ntk.num_pis() )
   {
     static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
     static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
@@ -135,9 +136,13 @@ public:
       static_assert( has_foreach_fanout_v<Ntk>, "Ntk does not implement the foreach_fanout method" );
     }
 
-    ntk._events->on_add.emplace_back( [&]( const auto& n ) {
+    std::weak_ptr wp = _self;
+    ntk._events->on_add.emplace_back( [wp]( const auto& n ) {
       (void)n;
-      literals.resize();
+      auto selfp = wp.lock(); if ( !selfp ) return false;
+      auto self = *selfp;
+      self->literals.resize();
+      return true;
     });
 
     /* constants are mapped to var 0 */
@@ -695,6 +700,8 @@ private:
 
 private:
   Ntk const& ntk;
+
+  std::shared_ptr<circuit_validator *> _self;
 
   validator_params const& ps;
 

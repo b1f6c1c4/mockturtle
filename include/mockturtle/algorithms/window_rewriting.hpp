@@ -39,6 +39,7 @@
 
 #include <abcresub/abcresub2.hpp>
 #include <fmt/format.h>
+#include <memory>
 #include <stack>
 
 #pragma once
@@ -74,23 +75,35 @@ public:
 public:
   explicit window_rewriting_impl( Ntk& ntk, window_rewriting_params const& ps, window_rewriting_stats& st )
     : ntk( ntk )
+    , _self( std::make_shared<window_rewriting_impl>(this) )
     , ps( ps )
     , st( st )
   {
-    auto const update_level_of_new_node = [&]( const auto& n ) {
-      ntk.resize_levels();
-      update_node_level( n );
+    std::weak_ptr wp = _self;
+
+    auto const update_level_of_new_node = [wp]( const auto& n ) {
+      auto selfp = wp.lock(); if ( !selfp ) return false;
+      auto self = *selfp;
+      self->ntk.resize_levels();
+      self->update_node_level( n );
+      return true;
     };
 
-    auto const update_level_of_existing_node = [&]( node const& n, const auto& old_children ) {
+    auto const update_level_of_existing_node = [wp]( node const& n, const auto& old_children ) {
       (void)old_children;
-      ntk.resize_levels();
-      update_node_level( n );
+      auto selfp = wp.lock(); if ( !selfp ) return false;
+      auto self = *selfp;
+      self->ntk.resize_levels();
+      self->update_node_level( n );
+      return true;
     };
 
-    auto const update_level_of_deleted_node = [&]( node const& n ) {
-      assert( ntk.fanout_size( n ) == 0u );
-      ntk.set_level( n, -1 );
+    auto const update_level_of_deleted_node = [wp]( node const& n ) {
+      auto selfp = wp.lock(); if ( !selfp ) return false;
+      auto self = *selfp;
+      assert( self->ntk.fanout_size( n ) == 0u );
+      self->ntk.set_level( n, -1 );
+      return true;
     };
 
     ntk._events->on_add.emplace_back( update_level_of_new_node );
@@ -319,6 +332,7 @@ private:
 
 private:
   Ntk& ntk;
+  std::shared_ptr<window_rewriting_impl *> _self;
   window_rewriting_params ps;
   window_rewriting_stats& st;
 }; /* window_rewriting_impl */
