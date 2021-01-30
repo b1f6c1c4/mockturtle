@@ -33,6 +33,7 @@
 
 #pragma once
 
+#include "../networks/events.hpp"
 #include "../traits.hpp"
 #include "../utils/progress_bar.hpp"
 #include "../utils/stopwatch.hpp"
@@ -43,7 +44,6 @@
 #include "dont_cares.hpp"
 #include "reconv_cut.hpp"
 
-#include <memory>
 #include <vector>
 
 namespace mockturtle
@@ -583,7 +583,10 @@ private:
  * only `divs` is needed.
  */
 template<class Ntk, class ResubEngine = window_based_resub_engine<Ntk, kitty::dynamic_truth_table>, class DivCollector = default_divisor_collector<Ntk>>
-class resubstitution_impl
+class resubstitution_impl :
+  public event_add_crtp<Ntk, resubstitution_impl<Ntk, ResubEngine, DivCollector>>,
+  public event_modified_crtp<Ntk, resubstitution_impl<Ntk, ResubEngine, DivCollector>>,
+  public event_delete_crtp<Ntk, resubstitution_impl<Ntk, ResubEngine, DivCollector>>
 {
 public:
   using engine_st_t = typename ResubEngine::stats;
@@ -592,6 +595,10 @@ public:
   using signal = typename Ntk::signal;
   using resub_callback_t = std::function<bool( Ntk&, node const&, signal const& )>;
   using mffc_result_t = typename ResubEngine::mffc_result_t;
+
+  friend class network_events<Ntk>::add_accessor;
+  friend class network_events<Ntk>::modified_accessor;
+  friend class network_events<Ntk>::delete_accessor;
 
   /*! \brief Constructor of the top-level resubstitution framework.
    *
@@ -603,43 +610,38 @@ public:
    * \param callback Callback function when a resubstitution is found.
    */
   explicit resubstitution_impl( Ntk& ntk, resubstitution_params const& ps, resubstitution_stats& st, engine_st_t& engine_st, collector_st_t& collector_st )
-      : ntk( ntk ), _self( std::make_shared<resubstitution_impl *>(this) ), ps( ps ), st( st ), engine_st( engine_st ), collector_st( collector_st )
+      : ntk( ntk ), ps( ps ), st( st ), engine_st( engine_st ), collector_st( collector_st )
   {
     static_assert( std::is_same_v<typename ResubEngine::mffc_result_t, typename DivCollector::mffc_result_t>, "MFFC result type of the engine and the collector are different" );
 
     st.initial_size = ntk.num_gates();
 
-    std::weak_ptr wp = _self;
-
-    auto const update_level_of_new_node = [wp]( const auto& n ) {
-      auto selfp = wp.lock(); if ( !selfp ) return false;
-      auto self = *selfp;
+    auto const update_level_of_new_node = []( void *wp, const auto& n ) {
+      auto self = reinterpret_cast<resubstitution_impl *>(wp);
       self->ntk.resize_levels();
       self->update_node_level( n );
-      return true;
     };
 
-    auto const update_level_of_existing_node = [wp]( node const& n, const auto& old_children ) {
+    auto const update_level_of_existing_node = []( void *wp, node const& n, const auto& old_children ) {
       (void)old_children;
-      auto selfp = wp.lock(); if ( !selfp ) return false;
-      auto self = *selfp;
+      auto self = reinterpret_cast<resubstitution_impl *>(wp);
       self->ntk.resize_levels();
       self->update_node_level( n );
-      return true;
     };
 
-    auto const update_level_of_deleted_node = [wp]( const auto& n ) {
-      auto selfp = wp.lock(); if ( !selfp ) return false;
-      auto self = *selfp;
+    auto const update_level_of_deleted_node = []( void *wp, const auto& n ) {
+      auto self = reinterpret_cast<resubstitution_impl *>(wp);
       self->ntk.set_level( n, -1 );
-      return true;
     };
 
-    ntk._events->on_add.emplace_back( update_level_of_new_node );
+    ntk._events->on_add.emplace_back( event_add_crtp<Ntk, resubstitution_impl>::wp(),
+        update_level_of_new_node );
 
-    ntk._events->on_modified.emplace_back( update_level_of_existing_node );
+    ntk._events->on_modified.emplace_back( event_modified_crtp<Ntk, resubstitution_impl>::wp(),
+        update_level_of_existing_node );
 
-    ntk._events->on_delete.emplace_back( update_level_of_deleted_node );
+    ntk._events->on_delete.emplace_back( event_delete_crtp<Ntk, resubstitution_impl>::wp(),
+        update_level_of_deleted_node );
   }
 
   void run( resub_callback_t const& callback = substitute_fn<Ntk> )
@@ -737,8 +739,6 @@ private:
 
 private:
   Ntk& ntk;
-
-  std::shared_ptr<resubstitution_impl *> _self;
 
   resubstitution_params const& ps;
   resubstitution_stats& st;

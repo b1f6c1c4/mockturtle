@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "../traits.hpp"
+#include "../networks/events.hpp"
 #include "../networks/detail/foreach.hpp"
 #include "../utils/node_map.hpp"
 #include "immutable_view.hpp"
@@ -79,7 +80,10 @@ public:
 };
 
 template<typename Ntk>
-class fanout_view<Ntk, false> : public Ntk
+class fanout_view<Ntk, false> : public Ntk,
+      public event_add_crtp<Ntk, fanout_view<Ntk>>,
+      public event_modified_crtp<Ntk, fanout_view<Ntk>>,
+      public event_delete_crtp<Ntk, fanout_view<Ntk>>
 {
 public:
   using storage = typename Ntk::storage;
@@ -88,7 +92,6 @@ public:
 
   explicit fanout_view( fanout_view_params const& ps = {} )
     : Ntk()
-    , _self( std::make_shared<fanout_view *>(this) )
     , _fanout( *this )
     , _ps( ps )
   {
@@ -98,54 +101,45 @@ public:
 
     update_fanout();
 
-    std::weak_ptr wp = _self;
-
     if ( _ps.update_on_add )
     {
-      Ntk::events().on_add.push_back( [wp]( auto const& n ) {
-        auto selfp = wp.lock(); if ( !selfp ) return false;
-        auto self = *selfp;
+      Ntk::events().on_add.emplace_back( event_add_crtp<Ntk, fanout_view>::wp(), []( void *wp, auto const& n ) {
+        auto self = reinterpret_cast<fanout_view *>(wp);
         self->_fanout.resize();
         self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
           self->_fanout[f].push_back( n );
         } );
-        return true;
       } );
     }
 
     if ( _ps.update_on_modified )
     {
-      Ntk::events().on_modified.push_back( [wp]( auto const& n, auto const& previous ) {
+      Ntk::events().on_modified.emplace_back( event_modified_crtp<Ntk, fanout_view>::wp(), []( void *wp, auto const& n, auto const& previous ) {
         (void)previous;
-        auto selfp = wp.lock(); if ( !selfp ) return false;
-        auto self = *selfp;
+        auto self = reinterpret_cast<fanout_view *>(wp);
         for ( auto const& f : previous ) {
           self->_fanout[f].erase( std::remove( self->_fanout[f].begin(), self->_fanout[f].end(), n ), self->_fanout[f].end() );
         }
         self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
           self->_fanout[f].push_back( n );
         } );
-        return true;
       } );
     }
 
     if ( _ps.update_on_delete )
     {
-      Ntk::events().on_delete.push_back( [wp]( auto const& n ) {
-        auto selfp = wp.lock(); if ( !selfp ) return false;
-        auto self = *selfp;
+      Ntk::events().on_delete.emplace_back( event_delete_crtp<Ntk, fanout_view>::wp(), []( void *wp, auto const& n ) {
+        auto self = reinterpret_cast<fanout_view *>(wp);
         self->_fanout[n].clear();
         self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
           self->_fanout[f].erase( std::remove( self->_fanout[f].begin(), self->_fanout[f].end(), n ), self->_fanout[f].end() );
         } );
-        return true;
       } );
     }
   }
 
   explicit fanout_view( Ntk const& ntk, fanout_view_params const& ps = {} )
     : Ntk( ntk )
-    , _self( std::make_shared<fanout_view *>(this) )
     , _fanout( ntk )
     , _ps( ps )
   {
@@ -155,47 +149,39 @@ public:
 
     update_fanout();
 
-    std::weak_ptr wp = _self;
-
     if ( _ps.update_on_add )
     {
-      Ntk::events().on_add.push_back( [wp]( auto const& n ) {
-        auto selfp = wp.lock(); if ( !selfp ) return false;
-        auto self = *selfp;
+      Ntk::events().on_add.emplace_back( event_add_crtp<Ntk, fanout_view>::wp(), []( void *wp, auto const& n ) {
+        auto self = reinterpret_cast<fanout_view *>(wp);
         self->_fanout.resize();
         self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
           self->_fanout[f].push_back( n );
         } );
-        return true;
       } );
     }
 
     if ( _ps.update_on_modified )
     {
-      Ntk::events().on_modified.push_back( [wp]( auto const& n, auto const& previous ) {
+      Ntk::events().on_modified.emplace_back( event_modified_crtp<Ntk, fanout_view>::wp(), []( void *wp, auto const& n, auto const& previous ) {
         (void)previous;
-        auto selfp = wp.lock(); if ( !selfp ) return false;
-        auto self = *selfp;
+        auto self = reinterpret_cast<fanout_view *>(wp);
         for ( auto const& f : previous ) {
           self->_fanout[f].erase( std::remove( self->_fanout[f].begin(), self->_fanout[f].end(), n ), self->_fanout[f].end() );
         }
         self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
           self->_fanout[f].push_back( n );
         } );
-        return true;
       } );
     }
 
     if ( _ps.update_on_delete )
     {
-      Ntk::events().on_delete.push_back( [wp]( auto const& n ) {
-        auto selfp = wp.lock(); if ( !selfp ) return false;
-        auto self = *selfp;
+      Ntk::events().on_delete.emplace_back( event_delete_crtp<Ntk, fanout_view>::wp(), []( void *wp, auto const& n ) {
+        auto self = reinterpret_cast<fanout_view *>(wp);
         self->_fanout[n].clear();
         self->Ntk::foreach_fanin( n, [&, self]( auto const& f ) {
           self->_fanout[f].erase( std::remove( self->_fanout[f].begin(), self->_fanout[f].end(), n ), self->_fanout[f].end() );
         } );
-        return true;
       } );
     }
   }
@@ -259,8 +245,6 @@ private:
           });
       });
   }
-
-  std::shared_ptr<fanout_view *> _self;
 
   node_map<std::vector<node>, Ntk> _fanout;
   fanout_view_params _ps;

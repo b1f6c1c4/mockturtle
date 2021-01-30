@@ -33,7 +33,6 @@
 #pragma once
 
 #include <variant>
-#include <memory>
 #include <algorithm>
 
 #include "../utils/abc_resub.hpp"
@@ -728,12 +727,15 @@ struct sim_resub_stats
  * \param MffcRes Typename of `potential_gain` needed by the resubstitution functor.
  */
 template<class Ntk, typename validator_t = circuit_validator<Ntk, bill::solvers::bsat2, false, true, false>, class ResubFn = abc_resub_functor<Ntk, validator_t>, typename MffcRes = uint32_t>
-class simulation_based_resub_engine
+class simulation_based_resub_engine :
+  public event_add_crtp<Ntk, simulation_based_resub_engine<Ntk, validator_t, ResubFn, MffcRes>>
 {
 public:
   static constexpr bool require_leaves_and_mffc = false;
   using stats = sim_resub_stats<typename ResubFn::stats>;
   using mffc_result_t = MffcRes;
+
+  friend class network_events<Ntk>::add_accessor;
 
   using node = typename Ntk::node;
   using signal = typename Ntk::signal;
@@ -742,7 +744,7 @@ public:
   using circuit = imaginary_circuit<Ntk, validator_t>;
 
   explicit simulation_based_resub_engine( Ntk& ntk, resubstitution_params const& ps, stats& st )
-      : ntk( ntk ), _self( std::make_shared<simulation_based_resub_engine *>(this) ), ps( ps ), st( st ), tts( ntk ), validator( ntk, vps )
+      : ntk( ntk ), ps( ps ), st( st ), tts( ntk ), validator( ntk, vps )
   {
     if constexpr ( !validator_t::use_odc_ )
     {
@@ -756,15 +758,11 @@ public:
     vps.conflict_limit = ps.conflict_limit;
     vps.random_seed = ps.random_seed;
 
-    std::weak_ptr wp = _self;
-
-    ntk._events->on_add.emplace_back( [wp]( const auto& n ) {
-      auto selfp = wp.lock(); if ( !selfp ) return false;
-      auto self = *selfp;
+    ntk._events->on_add.emplace_back( event_add_crtp<Ntk, simulation_based_resub_engine>::wp(), []( void *wp, const auto& n ) {
+      auto self = reinterpret_cast<simulation_based_resub_engine *>(wp);
       call_with_stopwatch( self->st.time_sim, [&]() {
         simulate_node<Ntk>( self->ntk, n, self->tts, self->sim );
       });
-      return true;
     } );
 
     /* prepare simulation patterns */
@@ -947,7 +945,6 @@ public:
 
 private:
   Ntk& ntk;
-  std::shared_ptr<simulation_based_resub_engine *> _self;
   resubstitution_params const& ps;
   stats& st;
 

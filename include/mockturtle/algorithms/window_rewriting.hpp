@@ -30,6 +30,7 @@
   \author Heinz Riener
 */
 
+#include "../networks/events.hpp"
 #include "../utils/index_list.hpp"
 #include "../utils/stopwatch.hpp"
 #include "../utils/window_utils.hpp"
@@ -39,7 +40,6 @@
 
 #include <abcresub/abcresub2.hpp>
 #include <fmt/format.h>
-#include <memory>
 #include <stack>
 
 #pragma once
@@ -66,49 +66,50 @@ namespace detail
 {
 
 template<class Ntk>
-class window_rewriting_impl
+class window_rewriting_impl :
+  public event_add_crtp<Ntk, window_rewriting_impl<Ntk>>,
+  public event_modified_crtp<Ntk, window_rewriting_impl<Ntk>>,
+  public event_delete_crtp<Ntk, window_rewriting_impl<Ntk>>
 {
 public:
   using node = typename Ntk::node;
   using signal = typename Ntk::signal;
 
+  friend class network_events<Ntk>::add_accessor;
+  friend class network_events<Ntk>::modified_accessor;
+  friend class network_events<Ntk>::delete_accessor;
+
 public:
   explicit window_rewriting_impl( Ntk& ntk, window_rewriting_params const& ps, window_rewriting_stats& st )
     : ntk( ntk )
-    , _self( std::make_shared<window_rewriting_impl>(this) )
     , ps( ps )
     , st( st )
   {
-    std::weak_ptr wp = _self;
-
-    auto const update_level_of_new_node = [wp]( const auto& n ) {
-      auto selfp = wp.lock(); if ( !selfp ) return false;
-      auto self = *selfp;
+    auto const update_level_of_new_node = []( void *wp, const auto& n ) {
+      auto self = reinterpret_cast<window_rewriting_impl *>(wp);
       self->ntk.resize_levels();
       self->update_node_level( n );
-      return true;
     };
 
-    auto const update_level_of_existing_node = [wp]( node const& n, const auto& old_children ) {
+    auto const update_level_of_existing_node = []( void *wp, node const& n, const auto& old_children ) {
       (void)old_children;
-      auto selfp = wp.lock(); if ( !selfp ) return false;
-      auto self = *selfp;
+      auto self = reinterpret_cast<window_rewriting_impl *>(wp);
       self->ntk.resize_levels();
       self->update_node_level( n );
-      return true;
     };
 
-    auto const update_level_of_deleted_node = [wp]( node const& n ) {
-      auto selfp = wp.lock(); if ( !selfp ) return false;
-      auto self = *selfp;
+    auto const update_level_of_deleted_node = []( void *wp, node const& n ) {
+      auto self = reinterpret_cast<window_rewriting_impl *>(wp);
       assert( self->ntk.fanout_size( n ) == 0u );
       self->ntk.set_level( n, -1 );
-      return true;
     };
 
-    ntk._events->on_add.emplace_back( update_level_of_new_node );
-    ntk._events->on_modified.emplace_back( update_level_of_existing_node );
-    ntk._events->on_delete.emplace_back( update_level_of_deleted_node );
+    ntk._events->on_add.emplace_back( event_add_crtp<Ntk, window_rewriting_impl>::wp(),
+        update_level_of_new_node );
+    ntk._events->on_modified.emplace_back( event_modified_crtp<Ntk, window_rewriting_impl>::wp(),
+        update_level_of_existing_node );
+    ntk._events->on_delete.emplace_back( event_delete_crtp<Ntk, window_rewriting_impl>::wp(),
+        update_level_of_deleted_node );
   }
 
   void run()
@@ -332,7 +333,6 @@ private:
 
 private:
   Ntk& ntk;
-  std::shared_ptr<window_rewriting_impl *> _self;
   window_rewriting_params ps;
   window_rewriting_stats& st;
 }; /* window_rewriting_impl */

@@ -32,8 +32,8 @@
 
 #pragma once
 
+#include "../networks/events.hpp"
 #include "../utils/node_map.hpp"
-#include <memory>
 #include "cnf.hpp"
 #include <bill/sat/interface/abc_bsat2.hpp>
 #include <bill/sat/interface/common.hpp>
@@ -59,13 +59,16 @@ struct validator_params
 };
 
 template<class Ntk, bill::solvers Solver = bill::solvers::glucose_41, bool use_pushpop = false, bool randomize = false, bool use_odc = false>
-class circuit_validator
+class circuit_validator :
+  public event_add_crtp<Ntk, circuit_validator<Ntk, Solver, use_pushpop, randomize, use_odc>>
 {
 public:
   static constexpr bool use_odc_ = use_odc;
   using node = typename Ntk::node;
   using signal = typename Ntk::signal;
   using add_clause_fn_t = std::function<void( std::vector<bill::lit_type> const& )>;
+
+  friend class network_events<Ntk>::add_accessor;
 
   enum gate_type
   {
@@ -96,7 +99,7 @@ public:
   };
 
   explicit circuit_validator( Ntk const& ntk, validator_params const& ps = {} )
-      : ntk( ntk ), _self( std::make_shared<circuit_validator *>(this) ), ps( ps ), literals( ntk ), constructed( ntk ), num_invoke( 0u ), cex( ntk.num_pis() )
+      : ntk( ntk ), ps( ps ), literals( ntk ), constructed( ntk ), num_invoke( 0u ), cex( ntk.num_pis() )
   {
     static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
     static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
@@ -136,13 +139,10 @@ public:
       static_assert( has_foreach_fanout_v<Ntk>, "Ntk does not implement the foreach_fanout method" );
     }
 
-    std::weak_ptr wp = _self;
-    ntk._events->on_add.emplace_back( [wp]( const auto& n ) {
+    ntk._events->on_add.emplace_back( event_add_crtp<Ntk, circuit_validator>::wp(), []( void *wp, const auto& n ) {
       (void)n;
-      auto selfp = wp.lock(); if ( !selfp ) return false;
-      auto self = *selfp;
+      auto self = reinterpret_cast<circuit_validator *>(wp);
       self->literals.resize();
-      return true;
     });
 
     /* constants are mapped to var 0 */
@@ -700,8 +700,6 @@ private:
 
 private:
   Ntk const& ntk;
-
-  std::shared_ptr<circuit_validator *> _self;
 
   validator_params const& ps;
 

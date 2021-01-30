@@ -33,9 +33,9 @@
 #pragma once
 
 #include <cstdint>
-#include <memory>
 #include <vector>
 
+#include "../networks/events.hpp"
 #include "../traits.hpp"
 #include "../utils/cost_functions.hpp"
 #include "../utils/node_map.hpp"
@@ -103,7 +103,8 @@ public:
 };
 
 template<class Ntk, class NodeCostFn>
-class depth_view<Ntk, NodeCostFn, false> : public Ntk
+class depth_view<Ntk, NodeCostFn, false> : public Ntk,
+      public event_add_crtp<Ntk, depth_view<Ntk, NodeCostFn, false>>
 {
 public:
   using storage = typename Ntk::storage;
@@ -112,7 +113,6 @@ public:
 
   explicit depth_view( NodeCostFn const& cost_fn = {}, depth_view_params const& ps = {} )
       : Ntk(),
-        _self( std::make_shared<depth_view *>(this) ),
         _ps( ps ),
         _levels( *this ),
         _crit_path( *this ),
@@ -127,12 +127,9 @@ public:
     static_assert( has_foreach_po_v<Ntk>, "Ntk does not implement the foreach_po method" );
     static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
 
-    std::weak_ptr wp = _self;
-    Ntk::events().on_add.push_back( [wp]( auto const& n ) {
-      auto selfp = wp.lock(); if ( !selfp ) return false;
-      auto self = *selfp;
+    Ntk::events().on_add.emplace_back( event_add_crtp<Ntk, depth_view>::wp(), []( void *wp, auto const& n ) {
+      auto self = reinterpret_cast<depth_view *>(wp);
       self->on_add( n );
-      return true;
     } );
   }
 
@@ -143,7 +140,6 @@ public:
    */
   explicit depth_view( Ntk const& ntk, NodeCostFn const& cost_fn = {}, depth_view_params const& ps = {} )
       : Ntk( ntk ),
-        _self( std::make_shared<depth_view *>(this) ),
         _ps( ps ),
         _levels( ntk ),
         _crit_path( ntk ),
@@ -160,12 +156,9 @@ public:
 
     update_levels();
 
-    std::weak_ptr wp = _self;
-    Ntk::events().on_add.push_back( [wp]( auto const& n ) {
-      auto selfp = wp.lock(); if ( !selfp ) return false;
-      auto self = *selfp;
+    Ntk::events().on_add.emplace_back( event_add_crtp<Ntk, depth_view>::wp(), []( void *wp, auto const& n ) {
+      auto self = reinterpret_cast<depth_view *>(wp);
       self->on_add( n );
-      return true;
     } );
   }
 
@@ -299,8 +292,6 @@ private:
 
     _levels[n] = level + _cost_fn( *this, n );
   }
-
-  std::shared_ptr<depth_view *> _self;
 
   depth_view_params _ps;
   node_map<uint32_t, Ntk> _levels;
