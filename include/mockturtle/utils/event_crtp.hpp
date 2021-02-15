@@ -88,11 +88,24 @@ struct event_handlers_t : public std::vector<event_handler_t<TArgs ...>>
 
 /*! \brief Base CRTP class for all willing to register their event handlers.
  *
- * This CRTP class takes care of generating It is the derived class's
- * responsibility to enable its copy/move ctor/assignment to default value.
+ * This CRTP class takes care of generating self pointers soly and it is the
+ * derived class's responsibility to enable its copy/move ctor/assignment to
+ * default value, i.e.
  *
- * Note that in any Derived classes, event_crtp must be initialized AFTER
- * whatever Accessor is going to access.
+ *      class T : public Ntk, public event_crtp<T, Accessor> {
+ *        public:
+ *          T(const T &) = default;
+ *          T(T &&) = default;
+ *          T &(const T &) = default;
+ *          T &(T &&) = default;
+ *      }
+ *
+ * where Accessor should be one of the event_(add|modified|delete)_crtp in
+ * the file mockturtle/networks/events.hpp.
+ *
+ * Note that event_crtp must be initialized AFTER whatever Accessor is going to
+ * access. In mostly of the cases, it means that T must inherit Ntk first
+ * before inheriting event_crtp.
  *
  * \tparam Derived The owner class
  * \tparam Accessor Callable of event_handlers_t<...>(Derived &owner)

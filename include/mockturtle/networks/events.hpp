@@ -63,7 +63,11 @@ struct network_events
   event_handlers_t<node<Ntk> const& /* n */> on_delete;
 
 
-  /*! \brief To be used as tparam Accessor in EventCRTP. */
+  /*! \brief To be used as tparam Accessor in EventCRTP.
+   *
+   * Note that the Derived class shall declare this class as a friend if
+   * the Derived class composes, rather than inherits, an Ntk.
+   */
   struct add_accessor
   {
     template<class Derived>
@@ -75,7 +79,11 @@ struct network_events
     }
   };
 
-  /*! \brief To be used as tparam Accessor in EventCRTP. */
+  /*! \brief To be used as tparam Accessor in EventCRTP.
+   *
+   * Note that the Derived class shall declare this class as a friend if
+   * the Derived class composes, rather than inherits, an Ntk.
+   */
   struct modified_accessor
   {
     template<class Derived>
@@ -87,7 +95,11 @@ struct network_events
     }
   };
 
-  /*! \brief To be used as tparam Accessor in EventCRTP. */
+  /*! \brief To be used as tparam Accessor in EventCRTP.
+   *
+   * Note that the Derived class shall declare this class as a friend if
+   * the Derived class composes, rather than inherits, an Ntk.
+   */
   struct delete_accessor
   {
     template<class Derived>
