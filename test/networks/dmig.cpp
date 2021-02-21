@@ -142,6 +142,7 @@ TEST_CASE( "create and use register in an D-MIG", "[dmig]" )
   CHECK( has_create_ro_v<dmig_network> );
   CHECK( has_create_ri_v<dmig_network> );
   CHECK( has_create_maj_v<dmig_network> );
+  CHECK( has_create_dmaj_v<dmig_network> );
 
   const auto c0 = dmig.get_constant( false );
   const auto x1 = dmig.create_pi();
@@ -218,6 +219,7 @@ TEST_CASE( "create binary and ternary operations in an D-MIG", "[dmig]" )
   CHECK( has_create_nor_v<dmig_network> );
   CHECK( has_create_xor_v<dmig_network> );
   CHECK( has_create_maj_v<dmig_network> );
+  CHECK( has_create_dmaj_v<dmig_network> );
 
   const auto x1 = dmig.create_pi();
   const auto x2 = dmig.create_pi();

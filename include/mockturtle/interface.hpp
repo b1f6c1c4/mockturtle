@@ -284,6 +284,9 @@ public:
   /*! \brief Creates a signal that computes the majority-of-3. */
   signal create_maj( signal const& f, signal const& g, signal const& h );
 
+  /*! \brief Creates a signal that computes the defective majority-of-3. */
+  signal create_dmaj( signal const& f, signal const& g, signal const& h );
+
   /*! \brief Creates a signal that computes the if-then-else operation.
    *
    * \param cond Condition for ITE operator
@@ -493,6 +496,9 @@ public:
 
   /*! \brief Returns true if node is a majority-of-3 gate. */
   bool is_maj( node const& n ) const;
+
+  /*! \brief Returns true if node is a defective majority-of-3 gate. */
+  bool is_dmaj( node const& n ) const;
 
   /*! \brief Returns true if node is a if-then-else gate. */
   bool is_ite( node const& n ) const;
