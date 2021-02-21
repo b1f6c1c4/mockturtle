@@ -189,14 +189,21 @@ private:
 private:
   bool reduce_depth( node<Ntk> const& n )
   {
-    if ( !ntk.is_maj( n ) )
-      return false;
+    if ( ntk.is_maj( n ) )
+      return reduce_depth_maj( n );
+	if constexpr ( has_create_dmaj_v<Ntk> )
+	  if ( ntk.is_dmaj( n ) )
+		return reduce_depth_dmaj( n );
+	return false;
+  }
 
+  bool reduce_depth_maj( node<Ntk> const& n )
+  {
     if ( ntk.level( n ) == 0 )
       return false;
 
     /* get children of top node, ordered by node level (ascending) */
-    const auto ocs = ordered_children( n );
+    const auto ocs = ordered_children<false>( n );
 
     if ( !ntk.is_maj( ntk.get_node( ocs[2] ) ) )
       return false;
@@ -210,7 +217,7 @@ private:
       return false;
 
     /* get children of last child */
-    auto ocs2 = ordered_children( ntk.get_node( ocs[2] ) );
+    auto ocs2 = ordered_children<false>( ntk.get_node( ocs[2] ) );
 
     /* depth of last grand-child must be higher than depth of second grand-child */
     if ( ntk.level( ntk.get_node( ocs2[2] ) ) == ntk.level( ntk.get_node( ocs2[1] ) ) )
@@ -246,6 +253,63 @@ private:
     return true;
   }
 
+  template <typename = std::enable_if<has_create_dmaj_v<Ntk>>>
+  bool reduce_depth_dmaj( node<Ntk> const& n )
+  {
+    if ( ntk.level( n ) == 0 )
+      return false;
+
+    /* get children of top node, ordered by node level (ascending) */
+    const auto ocs = ordered_children<true>( n );
+
+    if ( !ntk.is_dmaj( ntk.get_node( ocs[2] ) ) )
+      return false;
+
+    /* depth of last child must be (significantly) higher than depth of second child */
+    if ( ntk.level( ntk.get_node( ocs[2] ) ) <= ntk.level( ntk.get_node( ocs[1] ) ) + 1 )
+      return false;
+
+    /* child must have single fanout, if no area overhead is allowed */
+    if ( !ps.allow_area_increase && ntk.fanout_size( ntk.get_node( ocs[2] ) ) != 1 )
+      return false;
+
+    /* get children of last child */
+    auto ocs2 = ordered_children<true>( ntk.get_node( ocs[2] ) );
+
+    /* depth of last grand-child must be higher than depth of second grand-child */
+    if ( ntk.level( ntk.get_node( ocs2[2] ) ) == ntk.level( ntk.get_node( ocs2[1] ) ) )
+      return false;
+
+    /* propagate inverter if necessary */
+    if ( ntk.is_complemented( ocs[2] ) )
+    {
+      ocs2[0] = !ocs2[0];
+      ocs2[1] = !ocs2[1];
+      ocs2[2] = !ocs2[2];
+    }
+
+    if ( auto cand = associativity_candidate( ocs[0], ocs[1], ocs2[0], ocs2[1], ocs2[2] ); cand )
+    {
+      const auto& [x, y, z, u, assoc] = *cand;
+      auto opt = ntk.create_dmaj( z, assoc ? u : x, ntk.create_dmaj( x, y, u ) );
+      ntk.substitute_node( n, opt );
+      ntk.update_levels();
+
+      return true;
+    }
+
+    /* distributivity */
+    if ( ps.allow_area_increase )
+    {
+      auto opt = ntk.create_dmaj( ocs2[2],
+                                  ntk.create_dmaj( ocs[0], ocs[1], ocs2[0] ),
+                                  ntk.create_dmaj( ocs[0], ocs[1], ocs2[1] ) );
+      ntk.substitute_node( n, opt );
+      ntk.update_levels();
+    }
+    return true;
+  }
+
   using candidate_t = std::tuple<signal<Ntk>, signal<Ntk>, signal<Ntk>, signal<Ntk>, bool>;
   std::optional<candidate_t> associativity_candidate( signal<Ntk> const& v, signal<Ntk> const& w, signal<Ntk> const& x, signal<Ntk> const& y, signal<Ntk> const& z ) const
   {
@@ -269,11 +333,12 @@ private:
     return std::nullopt;
   }
 
+  template <bool D>
   std::array<signal<Ntk>, 3> ordered_children( node<Ntk> const& n ) const
   {
     std::array<signal<Ntk>, 3> children;
     ntk.foreach_fanin( n, [&children]( auto const& f, auto i ) { children[i] = f; } );
-    std::sort( children.begin(), children.end(), [this]( auto const& c1, auto const& c2 ) {
+    std::sort( children.begin() + (D ? 1 : 0), children.end(), [this]( auto const& c1, auto const& c2 ) {
       return ntk.level( ntk.get_node( c1 ) ) < ntk.level( ntk.get_node( c2 ) );
     } );
     return children;
@@ -331,6 +396,7 @@ private:
  * - `foreach_po`
  * - `foreach_fanin`
  * - `is_maj`
+ * - `is_dmaj`
  * - `clear_values`
  * - `set_value`
  * - `value`
@@ -357,6 +423,7 @@ void mig_algebraic_depth_rewriting( Ntk& ntk, mig_algebraic_depth_rewriting_para
   static_assert( has_foreach_po_v<Ntk>, "Ntk does not implement the foreach_po method" );
   static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
   static_assert( has_is_maj_v<Ntk>, "Ntk does not implement the is_maj method" );
+  static_assert( has_is_dmaj_v<Ntk>, "Ntk does not implement the is_dmaj method" );
   static_assert( has_clear_values_v<Ntk>, "Ntk does not implement the clear_values method" );
   static_assert( has_set_value_v<Ntk>, "Ntk does not implement the set_value method" );
   static_assert( has_value_v<Ntk>, "Ntk does not implement the value method" );
