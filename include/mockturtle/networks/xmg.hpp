@@ -805,6 +805,12 @@ public:
     return n > 0 && !is_ci( n ) && _storage->nodes[n].children[0].index < _storage->nodes[n].children[1].index;
   }
 
+  bool is_dmaj( node const& n ) const
+  {
+    (void)n;
+    return false;
+  }
+
   bool is_ite( node const& n ) const
   {
     (void)n;

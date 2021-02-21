@@ -704,6 +704,12 @@ public:
     return false;
   }
 
+  bool is_dmaj( node const& n ) const
+  {
+    (void)n;
+    return false;
+  }
+
   bool is_ite( node const& n ) const
   {
     (void)n;
