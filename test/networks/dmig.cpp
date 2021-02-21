@@ -155,11 +155,11 @@ TEST_CASE( "create and use register in an D-MIG", "[dmig]" )
   CHECK( dmig.num_pos() == 0 );
   CHECK( dmig.is_combinational() );
 
-  const auto f1 = dmig.create_maj( x1, x2, x3 );
+  const auto f1 = dmig.create_dmaj( x1, x2, x3 );
   dmig.create_po( f1 );
   dmig.create_po( !f1 );
 
-  const auto f2 = dmig.create_maj( f1, x4, c0 );
+  const auto f2 = dmig.create_dmaj( f1, x4, c0 );
   dmig.create_ri( f2 );
 
   const auto ro = dmig.create_ro();
@@ -242,22 +242,22 @@ TEST_CASE( "create binary and ternary operations in an D-MIG", "[dmig]" )
   dmig.create_xor( x1, x2 );
   CHECK( dmig.size() == 8 );
 
-  dmig.create_maj( x1, x2, f1 );
+  dmig.create_dmaj( x1, x2, f1 );
   CHECK( dmig.size() == 9 );
 
-  const auto f6 = dmig.create_maj( x1, x2, dmig.get_constant( false ) );
+  const auto f6 = dmig.create_dmaj( dmig.get_constant( false ), x1, x2 );
   CHECK( dmig.size() == 9 );
   CHECK( f1 == f6 );
 
-  const auto f7 = dmig.create_maj( x1, x2, dmig.get_constant( true ) );
+  const auto f7 = dmig.create_dmaj( x1, x2, dmig.get_constant( true ) );
   CHECK( dmig.size() == 9 );
   CHECK( f3 == f7 );
 
   const auto x3 = dmig.create_pi();
 
-  const auto f8 = dmig.create_maj( x1, x2, x3 );
-  const auto f9 = dmig.create_maj( !x1, !x2, !x3 );
-  CHECK( f8 == !f9 );
+  const auto f8 = dmig.create_dmaj( x1, x2, x3 );
+  const auto f9 = dmig.create_dmaj( !x1, !x2, !x3 );
+  CHECK( f8 != !f9 );
 }
 
 TEST_CASE( "hash nodes in D-MIG network", "[dmig]" )
@@ -268,16 +268,16 @@ TEST_CASE( "hash nodes in D-MIG network", "[dmig]" )
   auto b = dmig.create_pi();
   auto c = dmig.create_pi();
 
-  auto f = dmig.create_maj( a, b, c );
-  auto g = dmig.create_maj( a, b, c );
+  auto f = dmig.create_dmaj( a, b, c );
+  auto g = dmig.create_dmaj( a, b, c );
 
   CHECK( dmig.size() == 5u );
   CHECK( dmig.num_gates() == 1u );
 
   CHECK( dmig.get_node( f ) == dmig.get_node( g ) );
 
-  auto f1 = dmig.create_maj( a, !b, c );
-  auto g1 = dmig.create_maj( a, !b, c );
+  auto f1 = dmig.create_dmaj( a, !b, c );
+  auto g1 = dmig.create_dmaj( a, !b, c );
 
   CHECK( dmig.size() == 6u );
   CHECK( dmig.num_gates() == 2u );
@@ -294,7 +294,7 @@ TEST_CASE( "clone a node in D-MIG network", "[dmig]" )
   auto a1 = dmig1.create_pi();
   auto b1 = dmig1.create_pi();
   auto c1 = dmig1.create_pi();
-  auto f1 = dmig1.create_maj( a1, b1, c1 );
+  auto f1 = dmig1.create_dmaj( a1, b1, c1 );
   CHECK( dmig1.size() == 5 );
 
   auto a2 = dmig2.create_pi();
@@ -325,8 +325,8 @@ TEST_CASE( "structural properties of an D-MIG", "[dmig]" )
   const auto x2 = dmig.create_pi();
   const auto x3 = dmig.create_pi();
 
-  const auto f1 = dmig.create_maj( x1, x2, x3 );
-  const auto f2 = dmig.create_maj( x1, x2, !x3 );
+  const auto f1 = dmig.create_dmaj( x1, x2, x3 );
+  const auto f2 = dmig.create_dmaj( x1, x2, !x3 );
 
   dmig.create_po( f1 );
   dmig.create_po( f2 );
@@ -359,8 +359,8 @@ TEST_CASE( "node and signal iteration in an D-MIG", "[dmig]" )
   const auto x1 = dmig.create_pi();
   const auto x2 = dmig.create_pi();
   const auto x3 = dmig.create_pi();
-  const auto f1 = dmig.create_maj( x1, x2, x3 );
-  const auto f2 = dmig.create_maj( x1, x2, !x3 );
+  const auto f1 = dmig.create_dmaj( x1, x2, x3 );
+  const auto f2 = dmig.create_dmaj( x1, x2, !x3 );
   dmig.create_po( f1 );
   dmig.create_po( f2 );
 
@@ -474,8 +474,8 @@ TEST_CASE( "compute values in D-MIGs", "[dmig]" )
   const auto x1 = dmig.create_pi();
   const auto x2 = dmig.create_pi();
   const auto x3 = dmig.create_pi();
-  const auto f1 = dmig.create_maj( !x1, x2, x3 );
-  const auto f2 = dmig.create_maj( x1, !x2, x3 );
+  const auto f1 = dmig.create_dmaj( !x1, x2, x3 );
+  const auto f2 = dmig.create_dmaj( x1, !x2, x3 );
   dmig.create_po( f1 );
   dmig.create_po( f2 );
 
@@ -605,8 +605,8 @@ TEST_CASE( "custom node values in D-MIGs", "[dmig]" )
   const auto x1 = dmig.create_pi();
   const auto x2 = dmig.create_pi();
   const auto x3 = dmig.create_pi();
-  const auto f1 = dmig.create_maj( x1, x2, x3 );
-  const auto f2 = dmig.create_maj( !x1, x2, x3 );
+  const auto f1 = dmig.create_dmaj( x1, x2, x3 );
+  const auto f2 = dmig.create_dmaj( !x1, x2, x3 );
   dmig.create_po( f1 );
   dmig.create_po( f2 );
 
@@ -639,7 +639,7 @@ TEST_CASE( "visited values in D-MIGs", "[dmig]" )
   const auto x1 = dmig.create_pi();
   const auto x2 = dmig.create_pi();
   const auto x3 = dmig.create_pi();
-  const auto f1 = dmig.create_maj( x1, x2, x3 );
+  const auto f1 = dmig.create_dmaj( x1, x2, x3 );
   const auto f2 = dmig.create_and( x1, x2 );
   dmig.create_po( f1 );
   dmig.create_po( f2 );

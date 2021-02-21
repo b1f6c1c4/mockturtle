@@ -272,44 +272,31 @@ public:
 #pragma region Create binary / ternary functions
   signal create_maj( signal a, signal b, signal c )
   {
+	const auto f = create_dmaj( !b, !c, !a );
+	return create_dmaj( !f, a, c );
+  }
+
+  signal create_dmaj( signal a, signal b, signal c )
+  {
     /* order inputs */
-    if ( a.index > b.index )
-    {
-      std::swap( a, b );
-      if ( b.index > c.index )
-        std::swap( b, c );
-      if ( a.index > b.index )
-        std::swap( a, b );
-    }
-    else
-    {
-      if ( b.index > c.index )
-        std::swap( b, c );
-      if ( a.index > b.index )
-        std::swap( a, b );
-    }
+	if ( b.index > c.index )
+	  std::swap( b, c );
 
     /* trivial cases */
-    if ( a.index == b.index )
-    {
-      return ( a.complement == b.complement ) ? a : c;
-    }
-    else if ( b.index == c.index )
-    {
-      return ( b.complement == c.complement ) ? b : a;
-    }
+    if ( a.index == b.index && a.complement == b.complement )
+      return a;
+    if ( a.index == b.index && a.complement != b.complement )
+      return c; // taking advantage of X
+    if ( a.index == c.index && a.complement == c.complement )
+      return a;
+    if ( a.index == c.index && a.complement != c.complement )
+      return b; // taking advantage of X
+    if ( b.index == c.index && b.complement == c.complement )
+      return b; // taking advantage of X
+    if ( b.index == c.index && b.complement != c.complement )
+      return a;
 
-    /*  complemented edges minimization */
-    auto node_complement = false;
-    if ( static_cast<unsigned>( a.complement ) + static_cast<unsigned>( b.complement ) +
-             static_cast<unsigned>( c.complement ) >=
-         2u )
-    {
-      node_complement = true;
-      a.complement = !a.complement;
-      b.complement = !b.complement;
-      c.complement = !c.complement;
-    }
+    /* disabled: complemented edges minimization */
 
     storage::element_type::node_type node;
     node.children[0] = a;
@@ -320,7 +307,7 @@ public:
     const auto it = _storage->hash.find( node );
     if ( it != _storage->hash.end() )
     {
-      return {it->second, node_complement};
+      return {it->second, false};
     }
 
     const auto index = _storage->nodes.size();
@@ -342,12 +329,12 @@ public:
 
     _events->on_add( index );
 
-    return {index, node_complement};
+    return {index, false};
   }
 
   signal create_and( signal const& a, signal const& b )
   {
-    return create_maj( get_constant( false ), a, b );
+    return create_dmaj( get_constant( false ), a, b );
   }
 
   signal create_nand( signal const& a, signal const& b )
@@ -357,7 +344,7 @@ public:
 
   signal create_or( signal const& a, signal const& b )
   {
-    return create_maj( get_constant( true ), a, b );
+    return create_dmaj( a, get_constant( true ), b );
   }
 
   signal create_nor( signal const& a, signal const& b )
@@ -432,7 +419,7 @@ public:
     (void)other;
     (void)source;
     assert( children.size() == 3u );
-    return create_maj( children[0u], children[1u], children[2u] );
+    return create_dmaj( children[0u], children[1u], children[2u] );
   }
 #pragma endregion
 
@@ -458,43 +445,36 @@ public:
     }
 
     // determine potential new children of node n
-    signal child2 = new_signal;
-    signal child1 = node.children[( fanin + 1 ) % 3];
-    signal child0 = node.children[( fanin + 2 ) % 3];
+    signal a = node.children[0];
+    signal b = node.children[1];
+    signal c = node.children[2];
+	if (fanin == 0) a = new_signal;
+	else if (fanin == 1) b = new_signal;
+	else c = new_signal;
 
-    if ( child0.index > child1.index )
-    {
-      std::swap( child0, child1 );
-    }
-    if ( child1.index > child2.index )
-    {
-      std::swap( child1, child2 );
-    }
-    if ( child0.index > child1.index )
-    {
-      std::swap( child0, child1 );
-    }
-
-    assert( child0.index <= child1.index );
-    assert( child1.index <= child2.index );
+    /* order inputs */
+	if ( b.index > c.index )
+	  std::swap( b, c );
 
     // check for trivial cases?
-    if ( child0.index == child1.index )
-    {
-      const auto diff_pol = child0.complement != child1.complement;
-      return std::make_pair( n, diff_pol ? child2 : child0 );
-    }
-    else if ( child1.index == child2.index )
-    {
-      const auto diff_pol = child1.complement != child2.complement;
-      return std::make_pair( n, diff_pol ? child0 : child1 );
-    }
+    if ( a.index == b.index && a.complement == b.complement )
+      return std::make_pair( n, a );
+    if ( a.index == b.index && a.complement != b.complement )
+      return std::make_pair( n, c ); // taking advantage of X
+    if ( a.index == c.index && a.complement == c.complement )
+      return std::make_pair( n, a );
+    if ( a.index == c.index && a.complement != c.complement )
+      return std::make_pair( n, b ); // taking advantage of X
+    if ( b.index == c.index && b.complement == c.complement )
+      return std::make_pair( n, b ); // taking advantage of X
+    if ( b.index == c.index && b.complement != c.complement )
+      return std::make_pair( n, a );
 
     // node already in hash table
     storage::element_type::node_type _hash_obj;
-    _hash_obj.children[0] = child0;
-    _hash_obj.children[1] = child1;
-    _hash_obj.children[2] = child2;
+    _hash_obj.children[0] = a;
+    _hash_obj.children[1] = b;
+    _hash_obj.children[2] = c;
     if ( const auto it = _storage->hash.find( _hash_obj ); it != _storage->hash.end() )
     {
       return std::make_pair( n, signal( it->second, 0 ) );
@@ -509,9 +489,9 @@ public:
     _storage->hash.erase( node );
 
     // insert updated node into hash table
-    node.children[0] = child0;
-    node.children[1] = child1;
-    node.children[2] = child2;
+    node.children[0] = a;
+    node.children[1] = b;
+    node.children[2] = c;
     _storage->hash[node] = n;
 
     // update the reference counter of the new signal
@@ -719,6 +699,12 @@ public:
 
   bool is_maj( node const& n ) const
   {
+    (void)n;
+    return false;
+  }
+
+  bool is_dmaj( node const& n ) const
+  {
     return n > 0 && !is_ci( n );
   }
 
@@ -750,16 +736,6 @@ public:
   {
     (void)n;
     return false;
-  }
-#pragma endregion
-
-#pragma region Functional properties
-  kitty::dynamic_truth_table node_function( const node& n ) const
-  {
-    (void)n;
-    kitty::dynamic_truth_table _maj( 3 );
-    _maj._bits[0] = 0xe8;
-    return _maj;
   }
 #pragma endregion
 
